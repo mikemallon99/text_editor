@@ -33,6 +33,8 @@ typedef struct
 {
     KeyType key_type;
     U8 key_value;
+
+    B32 ctrl_down;
 } Input;
 
 #define PLATFORM_READ_FILE(name) U32 name(U8 *file_path, U8 *buffer, U32 buffer_size, U32 *file_size_out)
@@ -70,7 +72,7 @@ typedef struct
     U32 view_y;
 
     // NOTE: Used for combos like "ci)" and "dd"
-    U8 input_stack[8];
+    Input input_stack[8];
     U32 input_stack_top;
 } AppState;
 

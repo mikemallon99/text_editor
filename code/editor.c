@@ -163,118 +163,11 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
 
     // TODO: Build up an input buffer
     //       Always read inputs from buffer. When read, it clears the buffer
-
-    // Insert Mode vs Visual Mode
-    // Inputs + Update
     if (input.key_type)
     {
-        // CURSOR NAVIGATION:
-        // - Cursor XY -> String XY -> String Index 
-        // - Cursor XY is needed to have memory for staying on EOL
-
         if (app_state->input_mode == INPUTMODE_VISUAL)
         {
-            // Left
-            if (input.key_type == KEY_CHAR && input.key_value == 'h')
-            {
-                // NOTE: Dont go up to previous line if you hit left
-                if (string_cursor.x > 0)
-                {
-                    app_state->base_cursor.x = string_cursor.x - 1;
-                }
-            }
-            // Right
-            else if (input.key_type == KEY_CHAR && input.key_value == 'l')
-            {
-                // NOTE: Notice that were calculating off the string XY, not the cursor XY
-                String string_line = string_lines.strings[string_cursor.y];
-                // NOTE: string_line.size-1, because visual mode can only reach the last char
-                if (string_cursor.x < string_line.size-1)
-                {
-                    app_state->base_cursor.x = string_cursor.x + 1;
-                }
-            }
-            // Up
-            else if (input.key_type == KEY_CHAR && input.key_value == 'k')
-            {
-                if (string_cursor.y > 0)
-                {
-                    app_state->base_cursor.y = string_cursor.y - 1;
-                }
-            }
-            // Down
-            else if (input.key_type == KEY_CHAR && input.key_value == 'j')
-            {
-                // Go to the next line at the x value below
-                if (string_cursor.y < string_lines.count-1)
-                {
-                    app_state->base_cursor.y = string_cursor.y + 1;
-                }
-            }
-            // Insert
-            else if (input.key_type == KEY_CHAR && input.key_value == 'i')
-            {
-                app_state->input_mode = INPUTMODE_INSERT;
-            }
-            ////////////////////////////
-            // MOTIONS
-            // Start/end of line
-            else if (input.key_type == KEY_CHAR && input.key_value == '0')
-            {
-                app_state->base_cursor.x = 0;
-            }
-            else if (input.key_type == KEY_CHAR && input.key_value == '$')
-            {
-                // TODO: Sticks to EOL unintentionally (even tho this matches Vim)
-                String string_line = string_lines.strings[string_cursor.y];
-                app_state->base_cursor.x = string_line.size-1;
-            }
-            // Start/end of file
-            else if (input.key_type == KEY_CHAR && input.key_value == 'g')
-            {
-                // TODO: I have a feeling ill need to handle the input stack in a more organized way
-                if (app_state->input_stack_top == 1 && app_state->input_stack[0] == 'g')
-                {
-                    app_state->base_cursor.x = 0;
-                    app_state->base_cursor.y = 0;
-                    app_state->input_stack_top = 0;
-                }
-                else 
-                {
-                    app_state->input_stack[app_state->input_stack_top++] = 'g';
-                }
-            }
-            else if (input.key_type == KEY_CHAR && input.key_value == 'G')
-            {
-                app_state->base_cursor.x = 0;
-                app_state->base_cursor.y = string_lines.count-1;
-            }
-            // Next/prev word
-            else if (input.key_type == KEY_CHAR && input.key_value == 'w')
-            {
-                // Go to start of next token
-                if (token_index.next)
-                {
-                    U8 *token_start_ptr = token_index.next->value.data;
-                    app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
-                }
-            }
-            else if (input.key_type == KEY_CHAR && input.key_value == 'b')
-            {
-                // Go to start of current or previous token
-                U8 *string_addr = str_cursor_to_addr(string_lines, string_cursor);
-                U8 *token_start_ptr = 0;
-                // Check if at the start of the current token
-                if (token_index.token && (string_addr == token_index.token->value.data))
-                {
-                    token_start_ptr = token_index.prev->value.data;
-                }
-                else if (token_index.prev)
-                {
-                    token_start_ptr = token_index.prev->value.data;
-                }
-                app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
-            }
+            app_state->input_stack[app_state->input_stack_top++] = input;
         }
         else if (app_state->input_mode == INPUTMODE_INSERT)
         {
@@ -324,6 +217,153 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
             else if (input.key_type == KEY_ESC)
             {
                 app_state->input_mode = INPUTMODE_VISUAL;
+            }
+        }
+    }
+
+    if ((app_state->input_mode == INPUTMODE_VISUAL) && app_state->input_stack_top)
+    {
+        Input top_input = app_state->input_stack[app_state->input_stack_top-1];
+        // Left
+        if (top_input.key_type == KEY_CHAR && top_input.key_value == 'h')
+        {
+            // NOTE: Dont go up to previous line if you hit left
+            if (string_cursor.x > 0)
+            {
+                app_state->base_cursor.x = string_cursor.x - 1;
+            }
+            app_state->input_stack_top = 0;
+        }
+        // Right
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == 'l')
+        {
+            // NOTE: Notice that were calculating off the string XY, not the cursor XY
+            String string_line = string_lines.strings[string_cursor.y];
+            // NOTE: string_line.size-1, because visual mode can only reach the last char
+            if (string_cursor.x < string_line.size-1)
+            {
+                app_state->base_cursor.x = string_cursor.x + 1;
+            }
+            app_state->input_stack_top = 0;
+        }
+        // Up
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == 'k')
+        {
+            if (string_cursor.y > 0)
+            {
+                app_state->base_cursor.y = string_cursor.y - 1;
+            }
+            app_state->input_stack_top = 0;
+        }
+        // Down
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == 'j')
+        {
+            // Go to the next line at the x value below
+            if (string_cursor.y < string_lines.count-1)
+            {
+                app_state->base_cursor.y = string_cursor.y + 1;
+            }
+            app_state->input_stack_top = 0;
+        }
+        // Insert
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == 'i')
+        {
+            app_state->input_mode = INPUTMODE_INSERT;
+            app_state->input_stack_top = 0;
+        }
+        ////////////////////////////
+        // MOTIONS
+        // Start/end of line
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == '0')
+        {
+            app_state->base_cursor.x = 0;
+            app_state->input_stack_top = 0;
+        }
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == '$')
+        {
+            // TODO: Sticks to EOL unintentionally (even tho this matches Vim)
+            String string_line = string_lines.strings[string_cursor.y];
+            app_state->base_cursor.x = string_line.size-1;
+            app_state->input_stack_top = 0;
+        }
+        // Start/end of file
+        else if (app_state->input_stack[0].key_type == KEY_CHAR && app_state->input_stack[0].key_value == 'g' &&
+                 app_state->input_stack[1].key_type == KEY_CHAR && app_state->input_stack[1].key_value == 'g')
+        {
+            app_state->base_cursor.x = 0;
+            app_state->base_cursor.y = 0;
+            app_state->input_stack_top = 0;
+        }
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == 'G')
+        {
+            app_state->base_cursor.x = 0;
+            app_state->base_cursor.y = string_lines.count-1;
+            app_state->input_stack_top = 0;
+        }
+        // Next/prev word
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == 'w')
+        {
+            // Go to start of next token
+            if (token_index.next)
+            {
+                U8 *token_start_ptr = token_index.next->value.data;
+                app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
+            }
+            app_state->input_stack_top = 0;
+        }
+        else if (top_input.key_type == KEY_CHAR && top_input.key_value == 'b')
+        {
+            // Go to start of current or previous token
+            U8 *string_addr = str_cursor_to_addr(string_lines, string_cursor);
+            U8 *token_start_ptr = 0;
+            // Check if at the start of the current token
+            if (token_index.token && (string_addr == token_index.token->value.data))
+            {
+                token_start_ptr = token_index.prev->value.data;
+            }
+            else if (token_index.prev)
+            {
+                token_start_ptr = token_index.prev->value.data;
+            }
+            app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
+            app_state->input_stack_top = 0;
+        }
+        // Up/down half a page
+        else if (input.ctrl_down &&
+                 top_input.key_type == KEY_CHAR && top_input.key_value == 'd')
+        {
+            U32 half_page = console_buffer->height/2;
+            app_state->view_y += half_page;
+            if (app_state->view_y+console_buffer->height >= string_lines.count)
+            {
+                app_state->view_y = string_lines.count - console_buffer->height;
+            }
+            app_state->base_cursor.y += half_page;
+            if (app_state->base_cursor.y >= string_lines.count)
+            {
+                app_state->base_cursor.y = string_lines.count - 1;
+            }
+        }
+        else if (input.ctrl_down &&
+                 top_input.key_type == KEY_CHAR && top_input.key_value == 'u')
+        {
+            U32 half_page = console_buffer->height/2;
+            if (app_state->view_y > half_page)
+            {
+                app_state->view_y = 0;
+            }
+            else
+            {
+                app_state->view_y -= half_page;
+            }
+
+            if (app_state->base_cursor.y > half_page)
+            {
+                app_state->base_cursor.y = 0;
+            }
+            else
+            {
+                app_state->base_cursor.y -= half_page;
             }
         }
     }
@@ -378,6 +418,10 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
         }
     }
 
+    if (input.ctrl_down)
+    {
+        console_buffer->memory[0] = 'a';
+    }
 
     // NOTE: Cursor rendering
     // - Cursor XY -> String XY -> Screen XY

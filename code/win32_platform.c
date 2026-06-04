@@ -3,6 +3,29 @@
 
 U64 global_perf_count_freq = 0;
 
+function U8
+w32_virtual_to_ascii(U32 virtual_code)
+{
+    U8 result = 0;
+    // a = 0x41
+}
+
+function B32
+is_special(U8 c)
+{
+    B32 result = 0;
+    String special_chars = str_lit("!@#$%^&*()_+-=<>,.?`~;:'\"\\|[]{}");
+    for (U32 i=0; i < special_chars.size; i++)
+    {
+        if (c == special_chars.data[i])
+        {
+            result = 1;
+            break;
+        }
+    }
+    return result;
+}
+
 function F32
 w32_get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end)
 {
@@ -160,82 +183,74 @@ int main(int argc, char **argv)
 
     // TODO: How to profile this entire loop?
     int is_running = 1;
+    // NOTE: Input is like a controller, not events
+    Input input = {0};
     while (is_running)
     {
         // NOTE: Do it like this so we dont have to block waiting for input
-        Input input = {0};
         INPUT_RECORD input_record[16] = {0};
         DWORD cRead;
+        // Reset key input
+        input.key_type = 0;
+        input.key_value = 0;
         PeekConsoleInput(hStdin, (INPUT_RECORD*)&input_record, 16, &cRead);
         if (cRead > 0)
         {
             ReadConsoleInput(hStdin, (INPUT_RECORD*)&input_record, 16, &cRead);
             for (U32 i=0; i < cRead; i++)
             {
+                // TODO: This shitz broken, Ctrl+A doesnt work
                 if (input_record[i].EventType == KEY_EVENT &&
-                    input_record[i].Event.KeyEvent.bKeyDown == TRUE)
+                    input_record[i].Event.KeyEvent.wVirtualKeyCode == VK_CONTROL)
+                {
+                    input.ctrl_down = input_record[i].Event.KeyEvent.bKeyDown;
+                }
+                else if (input_record[i].EventType == KEY_EVENT &&
+                         input_record[i].Event.KeyEvent.bKeyDown == TRUE)
                 {
                     switch (input_record[i].Event.KeyEvent.wVirtualKeyCode)
                     {
                         case VK_BACK:
                         {
                             input.key_type = KEY_BACKSPACE;
-                            input.key_value = 0;
                         } break;
                         case VK_TAB:
                         {
                             input.key_type = KEY_TAB;
-                            input.key_value = 0;
                         } break;
                         case VK_RETURN:
                         {
                             input.key_type = KEY_RETURN;
-                            input.key_value = 0;
                         } break;
                         case VK_LEFT:
                         {
                             input.key_type = KEY_LEFTARROW;
-                            input.key_value = 0;
                         } break;
                         case VK_RIGHT:
                         {
                             input.key_type = KEY_RIGHTARROW;
-                            input.key_value = 0;
                         } break;
                         case VK_UP:
                         {
                             input.key_type = KEY_UPARROW;
-                            input.key_value = 0;
                         } break;
                         case VK_DOWN:
                         {
                             input.key_type = KEY_DOWNARROW;
-                            input.key_value = 0;
                         } break;
-                        case VK_CONTROL:
-                        {
-                            input.key_type = KEY_CTRL;
-                            input.key_value = 0;
-                        } break;
-                        case VK_SHIFT:
-                        {
-                            input.key_type = KEY_SHIFT;
-                            input.key_value = 0;
-                        } break;
-                        // case VK_ALT:
-                        // {
-                        //     input.key_type = KEY_ALT;
-                        //     input.key_value = 0;
-                        // } break;
                         case VK_ESCAPE:
                         {
                             input.key_type = KEY_ESC;
-                            input.key_value = 0;
                         } break;
+                        // TODO: Alt key
                         default:
                         {
-                            input.key_type = KEY_CHAR;
-                            input.key_value = input_record[i].Event.KeyEvent.uChar.AsciiChar;
+                            U8 ascii_value = input_record[i].Event.KeyEvent.uChar.AsciiChar;
+                            if (is_alpha(ascii_value) || is_digit(ascii_value) || is_special(ascii_value) || is_whitespace(ascii_value))
+                            {
+                                input.key_type = KEY_CHAR;
+                                input.key_value = ascii_value;
+                            }
                         } break;
                     }
                 }
