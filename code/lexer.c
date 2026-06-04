@@ -50,6 +50,8 @@ tokenize_string(Arena *arena, String string)
             cursor++;
         }
 
+        // TODO: 'comment' token
+
         // Standalone First
         Token last_token = {0};
         for (U32 token_index = 0;
@@ -68,11 +70,13 @@ tokenize_string(Arena *arena, String string)
         // NOTE: Take the last successful result, so we use "==" over "="
         if (last_token.type != TOKEN_TYPE_NULL)
         {
-            cursor += last_token.value.size;
             // NOTE: Push token here, gotta be a better way to handle the arena part here tho
             Token *test = push_struct(arena, Token);
-            result.tokens[result.count++] = last_token;
-            continue;
+            // NOTE: Need to push a string that points to the actual base memory
+            String push_string = {&string.data[cursor], last_token.value.size};
+            Token push_token = {last_token.type, push_string};
+            result.tokens[result.count++] = push_token;
+            cursor += last_token.value.size;
         }
         else
         {

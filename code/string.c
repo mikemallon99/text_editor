@@ -84,6 +84,7 @@ string_split(Arena *arena, String string, U8 c)
     }
     // Put in the rest
     result.strings[result.count++] = (String){string.data+last_index, string.size-last_index};
+    Assert(result.count > 0);
 
     return result;
 }

@@ -78,23 +78,10 @@ typedef struct
 
 typedef struct 
 {
-    U32 token_index;
-    U32 value_index;
-} TokenIndex;
-
-typedef struct 
-{
     Token *tokens;
     U32 count;
 } TokenArray;
 
-// TODO:
-// - Array of tokens
-// - String IDX -> (TokenArray Index, Token string index)
-// NOTE: What if we can assume that string and token_array are the same underlying memory?
-//       Then we can just check if the string_index is visible from any of the tokens
-//       If not, then we can infer that its between 2 tokens
-// TokenQueryResult string_idx_to_token_idx(TokenArray token_array, U32 string_index);
 
 function TokenArray tokenize_string(Arena *arena, String string);
 

@@ -4,6 +4,11 @@
 
 #include "editor.h"
 
+// Things u can get from memory pointer:
+//  - String index
+//  - String cursor (x,y)
+//  - Token index (Token, before, after)
+
 function String
 read_file_to_string(PlatformReadFileFunc *read_file_func, Arena *arena, String filepath)
 {
@@ -41,16 +46,44 @@ get_string_cursor(StringArray string_lines, Vec2i base_cursor)
     return result;
 }
 
-function U32
-get_string_index(StringArray string_lines, Vec2i string_cursor)
+typedef struct
 {
-    U32 result = 0;
-    for (U32 i=0; i < string_cursor.y; i++)
+    Token *token;
+    Token *next;
+    Token *prev;
+} TokenIndex;
+
+
+// TODO: Virtual cursor
+//  - String Cursor -> String index -> String cursor
+//  - String index -> token index -> String index
+
+function U8*
+str_cursor_to_addr(StringArray lines, Vec2i cursor)
+{
+    U8 *result = 0;
+    Assert(cursor.y < lines.count);
+    Assert(cursor.x <= lines.strings[cursor.y].size);
+    String line = lines.strings[cursor.y];
+    result = &line.data[cursor.x];
+    return result;
+}
+
+function Vec2i
+str_addr_to_cursor(StringArray lines, U8* addr)
+{
+    Vec2i result = {0};
+    for (U32 i=0; i < lines.count; i++)
     {
-        // NOTE: +1 cuz the newlines arent in the string split
-        result += string_lines.strings[i].size+1;
+        String line = lines.strings[i];
+        if (addr >= line.data &&
+            addr < (line.data+line.size))
+        {
+            result.x = addr - line.data;
+            result.y = i;
+            break;
+        }
     }
-    result += string_cursor.x;
     return result;
 }
 
@@ -78,8 +111,58 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
         app_state->is_initialized = 1;
     }
 
-    // TODO: Actually use this token array for jumping around with motions
+    // NOTE: Cursor XY needed for memory on hugging line end
+    // Cursor XY -> String XY
+    StringArray string_lines = string_split(&app_state->scratch_arena, app_state->string, '\n');
+    Vec2i string_cursor = get_string_cursor(string_lines, app_state->base_cursor);
+
+    // NOTE: Tokenize everything for vim motions
     TokenArray token_array = tokenize_string(&app_state->scratch_arena, app_state->string);
+    U8 *string_data_ptr = str_cursor_to_addr(string_lines, string_cursor);
+    TokenIndex token_index = {0};
+    for (U32 i=0; i < token_array.count; i++)
+    {
+        Token *token = &token_array.tokens[i];
+        // idx before token?
+        if (string_data_ptr < token->value.data)
+        {
+            token_index.next = token;
+            if (i > 0)
+            {
+                token_index.prev = &token_array.tokens[i-1];
+            }
+            break;
+        }
+
+        // idx in token?
+        if ((string_data_ptr >= token->value.data) &&
+            (string_data_ptr < (token->value.data + token->value.size)))
+        {
+            token_index.token = token;
+            if (i > 0)
+            {
+                token_index.prev = &token_array.tokens[i-1];
+            }
+            if (i+1 < token_array.count)
+            {
+                token_index.next = &token_array.tokens[i+1];
+            }
+            break;
+        }
+    }
+    // If nothing found in loop
+    if (!token_index.token && !token_index.next && !token_index.prev)
+    {
+        // idx after last token?
+        Token *last_token = &token_array.tokens[token_array.count-1];
+        if (string_data_ptr >= (last_token->value.data+last_token->value.size))
+        {
+            token_index.prev = last_token;
+        }
+    }
+
+    // TODO: Build up an input buffer
+    //       Always read inputs from buffer. When read, it clears the buffer
 
     // Insert Mode vs Visual Mode
     // Inputs + Update
@@ -88,12 +171,6 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
         // CURSOR NAVIGATION:
         // - Cursor XY -> String XY -> String Index 
         // - Cursor XY is needed to have memory for staying on EOL
-
-        // Cursor XY -> String XY
-        // NOTE: Save arena pos to pop at the end of this scope
-        StringArray string_lines = string_split(&app_state->scratch_arena, app_state->string, '\n');
-        Assert(string_lines.count > 0);
-        Vec2i string_cursor = get_string_cursor(string_lines, app_state->base_cursor);
 
         if (app_state->input_mode == INPUTMODE_VISUAL)
         {
@@ -175,35 +252,36 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
             // Next/prev word
             else if (input.key_type == KEY_CHAR && input.key_value == 'w')
             {
-                // Go until youve passed the next group of whitespaces
-                U32 string_index = get_string_index(string_lines, string_cursor);
-                B32 found_whitespace = is_whitespace(app_state->string.data[string_index]);
-                while (1)
+                // Go to start of next token
+                if (token_index.next)
                 {
-                    string_cursor.x += 1;
-                    string_index = get_string_index(string_lines, string_cursor);
-                    if (!found_whitespace)
-                    {
-                        // Increment until first whitespace is found
-                        found_whitespace = is_whitespace(app_state->string.data[string_index]);
-                    }
-                    else
-                    {
-                        // Once first whitespace is found, increment until first non whitespace is found
-                        if (!is_whitespace(app_state->string.data[string_index]))
-                        {
-                            break;
-                        }
-                    }
+                    U8 *token_start_ptr = token_index.next->value.data;
+                    app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
                 }
-                app_state->base_cursor.x = string_cursor.x;
+            }
+            else if (input.key_type == KEY_CHAR && input.key_value == 'b')
+            {
+                // Go to start of current or previous token
+                U8 *string_addr = str_cursor_to_addr(string_lines, string_cursor);
+                U8 *token_start_ptr = 0;
+                // Check if at the start of the current token
+                if (token_index.token && (string_addr == token_index.token->value.data))
+                {
+                    token_start_ptr = token_index.prev->value.data;
+                }
+                else if (token_index.prev)
+                {
+                    token_start_ptr = token_index.prev->value.data;
+                }
+                app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
             }
         }
         else if (app_state->input_mode == INPUTMODE_INSERT)
         {
             if (input.key_type == KEY_CHAR)
             {
-                U32 string_index = get_string_index(string_lines, string_cursor);
+                U8 *string_addr = str_cursor_to_addr(string_lines, string_cursor);
+                U32 string_index = string_addr - app_state->string.data;
                 // NOTE: Cursor puts at current position and then increments
                 string_insert_char(&app_state->string_arena, 
                                    &app_state->string, 
@@ -213,7 +291,8 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
             }
             else if (input.key_type == KEY_RETURN)
             {
-                U32 string_index = get_string_index(string_lines, string_cursor);
+                U8 *string_addr = str_cursor_to_addr(string_lines, string_cursor);
+                U32 string_index = string_addr - app_state->string.data;
                 string_insert_char(&app_state->string_arena, 
                                    &app_state->string, 
                                    string_index, 
@@ -235,7 +314,8 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
                     backspace_cursor.x = string_cursor.x-1;
                     backspace_cursor.y = string_cursor.y;
                 }
-                U32 string_index = get_string_index(string_lines, backspace_cursor);
+                U8 *string_addr = str_cursor_to_addr(string_lines, backspace_cursor);
+                U32 string_index = string_addr - app_state->string.data;
                 string_remove_index(&app_state->string_arena, 
                                     &app_state->string, 
                                     string_index);
@@ -264,10 +344,11 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
     // NOTE: Internally store a string interface, render as XY buffer
     memory_zero(console_buffer->memory, console_buffer->height*console_buffer->width);
     // TODO: Should find a better way to pop off the scratch arena
-    StringArray string_lines = string_split(&app_state->scratch_arena, app_state->string, '\n');
+    string_lines = string_split(&app_state->scratch_arena, app_state->string, '\n');
     Assert(string_lines.count > 0);
     Vec2i line_start_cursor = {0, app_state->view_y};
-    U32 string_index = get_string_index(string_lines, line_start_cursor);
+    U8 *string_addr = str_cursor_to_addr(string_lines, line_start_cursor);
+    U32 string_index = string_addr - app_state->string.data;
     for (U32 i=0; i < console_buffer->height; i++)
     {
         for (U32 j=0; j < console_buffer->width; j++)
@@ -300,7 +381,7 @@ app_update(AppMemory *memory, Input input, ConsoleBuffer *console_buffer)
 
     // NOTE: Cursor rendering
     // - Cursor XY -> String XY -> Screen XY
-    Vec2i string_cursor = get_string_cursor(string_lines, app_state->base_cursor);
+    string_cursor = get_string_cursor(string_lines, app_state->base_cursor);
     Vec2i view_cursor = {string_cursor.x, string_cursor.y - app_state->view_y};
     Assert(view_cursor.x < console_buffer->width);
     Assert(view_cursor.y < console_buffer->height);
