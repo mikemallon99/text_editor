@@ -110,6 +110,20 @@ string_insert_char(Arena *arena, String *string_inout, U32 index, U8 c)
 }
 
 function void
+string_delete_range(Arena *arena, String *string_inout, U32 range_start, U32 range_end)
+{
+    Assert(range_start < string_inout->size);
+    Assert(range_end <= string_inout->size);
+    U8 *src = string_inout->data + range_end;
+    U8 *dst = string_inout->data + range_start;
+    memory_zero(dst, range_end-range_start);
+    U32 n = string_inout->size - range_end;
+    memory_copy(dst, src, n);
+    string_inout->size -= range_end-range_start;
+    arena->pos -= range_end-range_start;
+}
+
+function void
 string_remove_index(Arena *arena, String *string_inout, U32 index)
 {
     Assert(index < string_inout->size);

@@ -3,11 +3,95 @@
 
 U64 global_perf_count_freq = 0;
 
-function U8
-w32_virtual_to_ascii(U32 virtual_code)
+function U32
+w32_virtual_to_keycode(U32 virtual_code)
 {
-    U8 result = 0;
-    // a = 0x41
+    U32 result = 1000;
+    if (virtual_code >= '0' && virtual_code <= '9')
+    {
+        result = virtual_code - '0';
+    }
+    else if (virtual_code >= 'A' && virtual_code <= 'Z')
+    {
+        result = 10 + virtual_code - 'A';
+    }
+    else if (virtual_code == VK_OEM_1)
+    {
+        result = KEY_SEMICOLON;
+    }
+    else if (virtual_code == VK_OEM_PLUS)
+    {
+        result = KEY_PLUS;
+    }
+    else if (virtual_code == VK_OEM_COMMA)
+    {
+        result = KEY_COMMA;
+    }
+    else if (virtual_code == VK_OEM_MINUS)
+    {
+        result = KEY_MINUS;
+    }
+    else if (virtual_code == VK_OEM_PERIOD)
+    {
+        result = KEY_PERIOD;
+    }
+    else if (virtual_code == VK_OEM_2)
+    {
+        result = KEY_SLASH;
+    }
+    else if (virtual_code == VK_OEM_3)
+    {
+        result = KEY_BACKTICK;
+    }
+    else if (virtual_code == VK_OEM_4)
+    {
+        result = KEY_LBRACE;
+    }
+    else if (virtual_code == VK_OEM_5)
+    {
+        result = KEY_BACKSLASH;
+    }
+    else if (virtual_code == VK_OEM_6)
+    {
+        result = KEY_RBRACE;
+    }
+    else if (virtual_code == VK_OEM_7)
+    {
+        result = KEY_QUOTE;
+    }
+    else if (virtual_code == VK_SPACE)
+    {
+        result = KEY_SPACE;
+    }
+    else if (virtual_code == VK_RETURN)
+    {
+        result = KEY_RETURN;
+    }
+    else if (virtual_code == VK_CONTROL)
+    {
+        result = KEY_CTRL;
+    }
+    else if (virtual_code == VK_MENU)
+    {
+        result = KEY_ALT;
+    }
+    else if (virtual_code == VK_ESCAPE)
+    {
+        result = KEY_ESC;
+    }
+    else if (virtual_code == VK_BACK)
+    {
+        result = KEY_BACKSPACE;
+    }
+    else if (virtual_code == VK_SHIFT)
+    {
+        result = KEY_SHIFT;
+    }
+    else if (virtual_code == VK_TAB)
+    {
+        result = KEY_TAB;
+    }
+    return result;
 }
 
 function B32
@@ -52,6 +136,108 @@ safe_truncate_u64(U64 value)
     return result;
 }
 
+function Keyboard
+w32_get_keyboard_state()
+{
+    Keyboard result = {0};
+    // 0-9
+    for (U32 vk='0'; vk <= '9'; vk++)
+    {
+        if (GetAsyncKeyState(vk) & 0x8000) 
+        {
+            U32 keycode = vk - '0';
+            result.keys[keycode].is_down = 1;
+        }
+    }
+    // A-Z
+    for (U32 vk='A'; vk <= 'Z'; vk++)
+    {
+        if (GetAsyncKeyState(vk) & 0x8000) 
+        {
+            U32 keycode = vk - 'A' + 10;
+            result.keys[keycode].is_down = 1;
+        }
+    }
+    // Special chars
+    if (GetAsyncKeyState(VK_OEM_1) & 0x8000) 
+    {
+        result.keys[KEY_SEMICOLON].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_PLUS) & 0x8000) 
+    {
+        result.keys[KEY_PLUS].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_COMMA) & 0x8000) 
+    {
+        result.keys[KEY_COMMA].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_MINUS) & 0x8000) 
+    {
+        result.keys[KEY_MINUS].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_PERIOD) & 0x8000) 
+    {
+        result.keys[KEY_PERIOD].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_2) & 0x8000) 
+    {
+        result.keys[KEY_SLASH].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_3) & 0x8000) 
+    {
+        result.keys[KEY_BACKTICK].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_4) & 0x8000) 
+    {
+        result.keys[KEY_LBRACE].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_5) & 0x8000) 
+    {
+        result.keys[KEY_BACKSLASH].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_6) & 0x8000) 
+    {
+        result.keys[KEY_RBRACE].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_OEM_7) & 0x8000) 
+    {
+        result.keys[KEY_QUOTE].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_SPACE) & 0x8000) 
+    {
+        result.keys[KEY_SPACE].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_RETURN) & 0x8000) 
+    {
+        result.keys[KEY_RETURN].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_CONTROL) & 0x8000) 
+    {
+        result.keys[KEY_CTRL].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_MENU) & 0x8000) 
+    {
+        result.keys[KEY_ALT].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) 
+    {
+        result.keys[KEY_ESC].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_BACK) & 0x8000) 
+    {
+        result.keys[KEY_BACKSPACE].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) 
+    {
+        result.keys[KEY_SHIFT].is_down = 1;
+    }
+    if (GetAsyncKeyState(VK_TAB) & 0x8000) 
+    {
+        result.keys[KEY_TAB].is_down = 1;
+    }
+    return result;
+}
+
 // NOTE: Returns 0 if buffer isnt big enough or other failure
 //       Caller will then pass a properly sized buffer based on bytes_read_out
 PLATFORM_READ_FILE(w32_read_file)
@@ -83,6 +269,26 @@ PLATFORM_READ_FILE(w32_read_file)
         CloseHandle(handle);
     }
     return result;
+}
+
+PLATFORM_WRITE_FILE(w32_write_file)
+{
+    HANDLE handle = CreateFileA(file_path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (handle != INVALID_HANDLE_VALUE)
+    {
+        DWORD bytes_written = 0;
+        BOOL write_err = WriteFile(handle, buffer, buffer_size, &bytes_written, 0);
+        if (!write_err)
+        {
+            printf("WriteFile failed - (%d)\n", GetLastError());
+        }
+
+        if (bytes_written != buffer_size)
+        {
+            printf("w32_write_file error - bytes_written != buffer_size\n");
+        }
+        CloseHandle(handle);
+    }
 }
 
 ////////////////////////
@@ -145,10 +351,10 @@ int main(int argc, char **argv)
     }
 
     COORD top_left_coord = {0};
-    U32 char_buffer_size = sizeof(CHAR_INFO)*(screen_buffer_info.dwSize.X*screen_buffer_info.dwSize.Y);
-    CHAR_INFO *chiBuffer = VirtualAlloc(0, char_buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+    U32 charinfo_buffer_size = sizeof(CHAR_INFO)*(screen_buffer_info.dwSize.X*screen_buffer_info.dwSize.Y);
+    CHAR_INFO *charinfo_buffer = VirtualAlloc(0, charinfo_buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
     if (!ReadConsoleOutput(hNewScreenBuffer,        
-                           chiBuffer,      
+                           charinfo_buffer,      
                            screen_buffer_info.dwSize,   
                            top_left_coord,  
                            &screen_buffer_info.srWindow))
@@ -165,9 +371,10 @@ int main(int argc, char **argv)
     console_buffer.memory = (U8*)VirtualAlloc(0, console_buffer.width*console_buffer.height, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
     AppMemory memory = {0};
-    memory.size = MB(64);
+    memory.size = MB(256);
     memory.memory = (void*)VirtualAlloc(0, memory.size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
     memory.platform_read_file = w32_read_file;
+    memory.platform_write_file = w32_write_file;
     Assert(argc == 2);
     memory.cli_input_filepath = (U8*)argv[1];
 
@@ -184,81 +391,73 @@ int main(int argc, char **argv)
     // TODO: How to profile this entire loop?
     int is_running = 1;
     // NOTE: Input is like a controller, not events
-    Input input = {0};
+    Keyboard keyboard = {0};
     while (is_running)
     {
-        // NOTE: Do it like this so we dont have to block waiting for input
-        INPUT_RECORD input_record[16] = {0};
-        DWORD cRead;
-        // Reset key input
-        input.key_type = 0;
-        input.key_value = 0;
-        PeekConsoleInput(hStdin, (INPUT_RECORD*)&input_record, 16, &cRead);
-        if (cRead > 0)
+        // Check if console buffer changed at all
+        GetConsoleScreenBufferInfo(hNewScreenBuffer, &screen_buffer_info);
+        if (console_buffer.width != screen_buffer_info.dwSize.X || 
+            console_buffer.height != screen_buffer_info.dwSize.Y)
         {
-            ReadConsoleInput(hStdin, (INPUT_RECORD*)&input_record, 16, &cRead);
-            for (U32 i=0; i < cRead; i++)
+            console_buffer.width = screen_buffer_info.dwSize.X;
+            console_buffer.height = screen_buffer_info.dwSize.Y;
+            VirtualFree(console_buffer.memory, 0, MEM_RELEASE);
+            console_buffer.memory = (U8*)VirtualAlloc(0, console_buffer.width*console_buffer.height, 
+                                                      MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            VirtualFree(charinfo_buffer, 0, MEM_RELEASE);
+            charinfo_buffer_size = sizeof(CHAR_INFO)*(console_buffer.width*console_buffer.height);
+            charinfo_buffer = (CHAR_INFO*)VirtualAlloc(0, charinfo_buffer_size, 
+                                                       MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+            if (!ReadConsoleOutput(hNewScreenBuffer,        
+                                   charinfo_buffer,      
+                                   screen_buffer_info.dwSize,   
+                                   top_left_coord,  
+                                   &screen_buffer_info.srWindow))
             {
-                // TODO: This shitz broken, Ctrl+A doesnt work
-                if (input_record[i].EventType == KEY_EVENT &&
-                    input_record[i].Event.KeyEvent.wVirtualKeyCode == VK_CONTROL)
-                {
-                    input.ctrl_down = input_record[i].Event.KeyEvent.bKeyDown;
-                }
-                else if (input_record[i].EventType == KEY_EVENT &&
-                         input_record[i].Event.KeyEvent.bKeyDown == TRUE)
-                {
-                    switch (input_record[i].Event.KeyEvent.wVirtualKeyCode)
-                    {
-                        case VK_BACK:
-                        {
-                            input.key_type = KEY_BACKSPACE;
-                        } break;
-                        case VK_TAB:
-                        {
-                            input.key_type = KEY_TAB;
-                        } break;
-                        case VK_RETURN:
-                        {
-                            input.key_type = KEY_RETURN;
-                        } break;
-                        case VK_LEFT:
-                        {
-                            input.key_type = KEY_LEFTARROW;
-                        } break;
-                        case VK_RIGHT:
-                        {
-                            input.key_type = KEY_RIGHTARROW;
-                        } break;
-                        case VK_UP:
-                        {
-                            input.key_type = KEY_UPARROW;
-                        } break;
-                        case VK_DOWN:
-                        {
-                            input.key_type = KEY_DOWNARROW;
-                        } break;
-                        case VK_ESCAPE:
-                        {
-                            input.key_type = KEY_ESC;
-                        } break;
-                        // TODO: Alt key
-                        default:
-                        {
-                            U8 ascii_value = input_record[i].Event.KeyEvent.uChar.AsciiChar;
-                            if (is_alpha(ascii_value) || is_digit(ascii_value) || is_special(ascii_value) || is_whitespace(ascii_value))
-                            {
-                                input.key_type = KEY_CHAR;
-                                input.key_value = ascii_value;
-                            }
-                        } break;
-                    }
-                }
+                printf("ReadConsoleOutput failed - (%d)\n", GetLastError());
+                return 1;
             }
         }
 
+        // NOTE: This input gathering method has bugs on combo keys (shift+4 missing key up)
+        // // NOTE: Do it like this so we dont have to block waiting for input
+        // INPUT_RECORD input_record[16] = {0};
+        // DWORD cRead;
+        // // Reset key input
+        // // keyboard.key_type = 0;
+        // // keyboard.key_value = 0;
+        // PeekConsoleInput(hStdin, (INPUT_RECORD*)&input_record, 16, &cRead);
+        // if (cRead > 0)
+        // {
+        //     ReadConsoleInput(hStdin, (INPUT_RECORD*)&input_record, 16, &cRead);
+        //     for (U32 i=0; i < cRead; i++)
+        //     {
+        //         // TODO: For some reason were not getting notified that '4' was released
+        //         if (input_record[i].EventType == KEY_EVENT)
+        //         {
+        //             B32 is_down = input_record[i].Event.KeyEvent.bKeyDown;
+        //             DWORD vk_code = input_record[i].Event.KeyEvent.wVirtualKeyCode;
+        //             U32 key_index = w32_virtual_to_keycode(vk_code);
+        //             if (key_index < KEY_COUNT)
+        //             {
+        //                 keyboard.keys[key_index].half_trans_count += keyboard.keys[key_index].is_down ^ is_down;
+        //                 keyboard.keys[key_index].is_down = is_down;
+        //             }
+        //         }
+        //     }
+        // }
+
+        Keyboard keyboard = {0};
+        // Check if console window in focus to recieve inputs or not
+        HWND console_window = GetConsoleWindow(); 
+        HWND foreground_window = GetForegroundWindow(); 
+        if (console_window == foreground_window)
+        {
+            keyboard = w32_get_keyboard_state();
+        }
+
         // Update
-        app_update(&memory, input, &console_buffer);
+        app_update(&memory, keyboard, &console_buffer);
 
         // TODO: Get the app update time here
         // F32 FromBeginToAudioSeconds = w32_get_seconds_elapsed(flip_wall_clock, AudioWallClock);
@@ -269,14 +468,14 @@ int main(int argc, char **argv)
             for (U32 j=0; j < console_buffer.width; j++)
             {
                 U32 index = console_buffer.width*i + j;
-                chiBuffer[index].Char.AsciiChar = (CHAR)(console_buffer.memory[index]);
+                charinfo_buffer[index].Char.AsciiChar = (CHAR)(console_buffer.memory[index]);
             }
         }
         
         // Copy output buffer
         // NOTE: I suspect that this has a latency to it
         if (!WriteConsoleOutput(hNewScreenBuffer,
-                                chiBuffer,
+                                charinfo_buffer,
                                 screen_buffer_info.dwSize,
                                 top_left_coord,
                                 &screen_buffer_info.srWindow))

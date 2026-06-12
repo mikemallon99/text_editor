@@ -14,37 +14,58 @@ typedef struct
 
 typedef enum 
 {
-    KEY_NULL,
-    KEY_UPARROW,
-    KEY_DOWNARROW,
-    KEY_LEFTARROW,
-    KEY_RIGHTARROW,
+    // 0 - 9 == '0-9'
+    // 10 - 35 == 'a-z'
+    // 36 - 47 == other chars
+    KEY_SEMICOLON = 36,
+    KEY_PLUS,
+    KEY_COMMA,
+    KEY_MINUS,
+    KEY_PERIOD,
+    KEY_SLASH,
+    KEY_BACKTICK,
+    KEY_LBRACE,
+    KEY_BACKSLASH,
+    KEY_RBRACE,
+    KEY_QUOTE,
+    KEY_SPACE,
+    // 48 - 53 == buttons
     KEY_RETURN,
-    KEY_CTRL,
-    KEY_ALT,
     KEY_ESC,
     KEY_BACKSPACE,
+    KEY_CTRL,
+    KEY_ALT,
     KEY_SHIFT,
     KEY_TAB,
-    KEY_CHAR,
+
+    KEY_COUNT
 } KeyType;
 
 typedef struct 
 {
-    KeyType key_type;
-    U8 key_value;
+    B32 is_down;
+    U32 half_trans_count;
+} button_state;
 
-    B32 ctrl_down;
-} Input;
+
+typedef struct 
+{
+    // 0-9 & a-z & -=[];',./\`
+    button_state keys[KEY_COUNT];
+} Keyboard;
 
 #define PLATFORM_READ_FILE(name) U32 name(U8 *file_path, U8 *buffer, U32 buffer_size, U32 *file_size_out)
 typedef PLATFORM_READ_FILE(PlatformReadFileFunc);
+
+#define PLATFORM_WRITE_FILE(name) void name(U8 *file_path, U8 *buffer, U32 buffer_size)
+typedef PLATFORM_WRITE_FILE(PlatformWriteFileFunc);
 
 typedef struct 
 {
     void *memory;
     U32   size;
-    PlatformReadFileFunc *platform_read_file;
+    PlatformReadFileFunc  *platform_read_file;
+    PlatformWriteFileFunc *platform_write_file;
     U8 *cli_input_filepath;
 } AppMemory;
 
@@ -70,9 +91,12 @@ typedef struct
     Vec2i base_cursor;
     InputMode input_mode;
     U32 view_y;
+    Keyboard last_keyboard;
+    String filepath;
+    U32 frames_key_down[KEY_COUNT];
 
     // NOTE: Used for combos like "ci)" and "dd"
-    Input input_stack[8];
+    U8 input_stack[16];
     U32 input_stack_top;
 } AppState;
 

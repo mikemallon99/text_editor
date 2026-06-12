@@ -10,6 +10,8 @@
     X(TOKEN_RBRACKET, "]") \
     X(TOKEN_APOSTRAPHE, "'") \
     X(TOKEN_QUOTE, "\"") \
+    X(TOKEN_BACKSLASH, "\\") \
+    X(TOKEN_AT, "@") \
     X(TOKEN_COMMA, ",") \
     X(TOKEN_DOT, ".") \
     X(TOKEN_MINUS, "-") \
@@ -18,10 +20,12 @@
     X(TOKEN_SLASH, "/") \
     X(TOKEN_COLON, ":") \
     X(TOKEN_SEMICOLON, ";") \
+    X(TOKEN_DOLLAR, "$") \
     X(TOKEN_BW_AND, "&") \
     X(TOKEN_BW_OR, "|") \
     X(TOKEN_BW_XOR, "^") \
     X(TOKEN_BW_NOT, "~") \
+    X(TOKEN_BACKTICK, "`") \
     X(TOKEN_PERCENT, "%") \
     X(TOKEN_QUESTION, "?") \
     X(TOKEN_POUND, "#") \
