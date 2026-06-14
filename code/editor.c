@@ -1,6 +1,7 @@
 #include "types.c"
 #include "string.c"
 #include "lexer.c"
+#include "font.c"
 
 #include "editor.h"
 
@@ -286,7 +287,11 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
     AppState *app_state = (AppState*)memory->memory;
     if (!app_state->is_initialized)
     {
-        void *scratch_arena_base = (void*)((U8*)memory->memory + sizeof(AppState));
+        void *perm_arena_base = (void*)((U8*)memory->memory + sizeof(AppState));
+        U32 perm_arena_size = MB(16);
+        app_state->perm_arena = arena_make(perm_arena_base, perm_arena_size);
+
+        void *scratch_arena_base = (void*)((U8*)perm_arena_base + perm_arena_size);
         U32 scratch_arena_size = MB(16);
         app_state->scratch_arena = arena_make(scratch_arena_base, scratch_arena_size);
 
@@ -303,10 +308,17 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
 
         app_state->last_keyboard = keyboard;
 
+        // TODO: Eventually move font init to renderer component
+        // Load the font
+        String bmp_contents = read_file_to_string(memory->platform_read_file, &app_state->scratch_arena, str_lit("w:/text_editor/data/font.bmp"));
+        BMPFile bmp_file = read_bmp_file(&app_state->scratch_arena, bmp_contents);
+        app_state->font = read_bmp_font(&app_state->perm_arena, bmp_file);
+
         app_state->is_initialized = 1;
     }
 
     // TODO:
+    // - UI layer to replace win32 console API
     // - Need visual way to debug input gathering
     // - undo history
     // - file system explorer
@@ -381,7 +393,7 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
 
         // TODO: Lock framerate to 60
         if ((keyboard.keys[keycode].is_down && !app_state->last_keyboard.keys[keycode].is_down) ||
-            (app_state->frames_key_down[keycode] > 10 && app_state->frames_key_down[keycode] % 3 == 0))
+            (app_state->frames_key_down[keycode] > 30 && app_state->frames_key_down[keycode] % 4 == 0))
         {
             if (app_state->input_mode == INPUTMODE_VISUAL && keycode < KEY_RETURN)
             {

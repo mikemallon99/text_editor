@@ -69,6 +69,15 @@ typedef struct
     U8 *cli_input_filepath;
 } AppMemory;
 
+typedef struct 
+{
+    void *memory;
+    U32   width;
+    U32   height;
+    U32   pitch;
+    U32   bytes_per_pixel;
+} VideoMemory;
+
 ////////////////////////
 // NOTE: App Stuff
 
@@ -81,6 +90,8 @@ typedef enum
 typedef struct 
 {
     B32 is_initialized;
+    // Need for font
+    Arena perm_arena;
     // Gets cleared at the end of each frame
     Arena scratch_arena;
     // Stores the underlying string, dont put anything else on this
@@ -88,6 +99,7 @@ typedef struct
     // Underlying string that youre editing
     String string;
 
+    Font font;
     Vec2i base_cursor;
     InputMode input_mode;
     U32 view_y;
