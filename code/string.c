@@ -51,13 +51,20 @@ function B32
 string_compare(String a, String b)
 {
     B32 result = 1;
-    for (U32 i=0; i < a.size; i++)
+    if (a.size == b.size)
     {
-        if (a.data[i] != b.data[i])
+        for (U32 i=0; i < a.size; i++)
         {
-            result = 0;
-            break;
+            if (a.data[i] != b.data[i])
+            {
+                result = 0;
+                break;
+            }
         }
+    }
+    else
+    {
+        result = 0;
     }
     return result;
 }

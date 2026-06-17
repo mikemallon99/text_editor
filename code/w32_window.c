@@ -87,6 +87,7 @@ w32_display_buffer_in_window(W32OffscreenBuffer *buffer, HDC device_context,
 }
 
 
+// TODO: Cursor needs to update when inside the window
 LRESULT CALLBACK w32_window_callback(
   HWND window,
   UINT message,
@@ -169,13 +170,21 @@ int CALLBACK WinMain(
         printf("RegisterClassA failed - (%d)\n", GetLastError());
     }
 
-    U32 window_width = global_backbuffer.width; 
-    U32 window_height = global_backbuffer.height; 
+    // NOTE: Window dims != image resolution, need to use AdjustWindowRect
+    RECT window_rect = {0, 0, global_backbuffer.width, global_backbuffer.height};
+    DWORD window_style = WS_OVERLAPPEDWINDOW|WS_VISIBLE;
+    BOOL has_menu = 0;
+    if (!AdjustWindowRect(&window_rect, window_style, has_menu))
+    {
+        printf("AdjustWindowRect failed - (%d)\n", GetLastError());
+    }
+    U32 window_width = window_rect.right - window_rect.left;
+    U32 window_height = window_rect.bottom - window_rect.top;
     HWND window = CreateWindowEx(
         0,
         window_class.lpszClassName,
         "poppy editor",
-        WS_OVERLAPPEDWINDOW|WS_VISIBLE,
+        window_style,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         window_width,
@@ -227,7 +236,6 @@ int CALLBACK WinMain(
     LARGE_INTEGER last_counter = w32_get_wall_clock();
     U64 last_cycle_count = __rdtsc();
 
-    // TODO: How to profile this entire loop?
     // NOTE: Input is like a controller, not events
     Keyboard keyboard = {0};
     global_running = 1;
@@ -302,8 +310,6 @@ int CALLBACK WinMain(
 
         HDC device_context = GetDC(window);
         W32WindowDimension dimension = w32_get_window_dimension(window);
-        // TODO: Fix the weird image stretching
-        // TODO: Fix window not responding
         w32_display_buffer_in_window(&global_backbuffer, device_context, 
                                      dimension.width, dimension.height);
 

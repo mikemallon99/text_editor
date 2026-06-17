@@ -307,6 +307,8 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
         app_state->string = string_replace(&app_state->string_arena, file_contents, str_lit("\r\n"), str_lit("\n"));
 
         app_state->last_keyboard = keyboard;
+        app_state->buffer_view_dims.x = console_buffer->width;
+        app_state->buffer_view_dims.y = console_buffer->height-2;
 
         // TODO: Eventually move font init to renderer component
         // Load the font
@@ -318,16 +320,16 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
     }
 
     // TODO:
-    // - UI layer to replace win32 console API
     // - Need visual way to debug input gathering
     // - undo history
-    // - file system explorer
-    // - multiple buffers
     // - e/y scrolling
     // - change word
     // - change inside thing
-    // - "file saved" notification
-    // - hold down key
+    // - filesystem stuff
+    //   - :e opens file in current buffer
+    //   - relative file opens from current directory
+    //   - multiple buffers
+    //   - file system explorer
 
     // NOTE: Cursor XY needed for memory on hugging line end
     // Cursor XY -> String XY
@@ -391,13 +393,33 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->frames_key_down[keycode] = 0;
         }
 
-        // TODO: Lock framerate to 60
         if ((keyboard.keys[keycode].is_down && !app_state->last_keyboard.keys[keycode].is_down) ||
             (app_state->frames_key_down[keycode] > 30 && app_state->frames_key_down[keycode] % 4 == 0))
         {
             if (app_state->input_mode == INPUTMODE_VISUAL && keycode < KEY_RETURN)
             {
                 app_state->input_stack[app_state->input_stack_top++] = keycode_to_char(keycode, keyboard.keys[KEY_SHIFT].is_down);
+            }
+            // Handle running a command
+            else if (app_state->input_mode == INPUTMODE_VISUAL && keycode == KEY_RETURN && 
+                     app_state->input_stack_top && app_state->input_stack[0] == ':')
+            {
+                String command = (String){&app_state->input_stack[1], app_state->input_stack_top-1};
+                if (string_compare(command, str_lit("w")))
+                {
+                    // Save file
+                    memory->platform_write_file(app_state->filepath.data, app_state->string.data, app_state->string.size);
+                    app_state->input_stack_top = 0;
+                    app_state->message = str_lit("Saved!");
+                    app_state->message_timer = 60;
+                }
+                else
+                {
+                    app_state->input_stack_top = 0;
+                    app_state->message = str_lit("Command not found");
+                    app_state->message_timer = 60;
+                }
+                app_state->input_stack_top = 0;
             }
             else if (app_state->input_mode == INPUTMODE_INSERT)
             {
@@ -455,8 +477,13 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
     if ((app_state->input_mode == INPUTMODE_VISUAL) && app_state->input_stack_top)
     {
         U8 top_input = app_state->input_stack[app_state->input_stack_top-1];
+        // TODO: Need better system for this
+        // Just ignore the input stack if its a command
+        if (app_state->input_stack[0] == ':')
+        {
+        }
         // Left
-        if (top_input == 'h')
+        else if (top_input == 'h')
         {
             // NOTE: Dont go up to previous line if you hit left
             if (string_cursor.x > 0)
@@ -655,22 +682,27 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             }
             app_state->input_stack_top = 0;
         }
-        // Save file
-        else if (keyboard.keys[KEY_CTRL].is_down && top_input == 's')
-        {
-            memory->platform_write_file(app_state->filepath.data, app_state->string.data, app_state->string.size);
-        }
     }
 
     // Update view based on latest cursor
-    U32 view_bottom = app_state->view_y + console_buffer->height;
+    U32 view_bottom = app_state->view_y + app_state->buffer_view_dims.y;
     if (app_state->base_cursor.y < app_state->view_y)
     {
         app_state->view_y = app_state->base_cursor.y;
     }
     else if (app_state->base_cursor.y >= view_bottom)
     {
-        app_state->view_y = (app_state->base_cursor.y + 1) - console_buffer->height;
+        app_state->view_y = (app_state->base_cursor.y + 1) - app_state->buffer_view_dims.y;
+    }
+
+    if (app_state->message_timer > 0)
+    {
+        app_state->message_timer -= 1;
+        if (app_state->message_timer == 0)
+        {
+            app_state->message.data = 0;
+            app_state->message.size = 0;
+        }
     }
 
     // Render
@@ -682,11 +714,11 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
     Vec2i line_start_cursor = {0, app_state->view_y};
     U8 *string_addr = str_cursor_to_addr(string_lines, line_start_cursor);
     U32 string_index = string_addr - app_state->string.data;
-    for (U32 i=0; i < console_buffer->height; i++)
+    for (U32 i=0; i < app_state->buffer_view_dims.y; i++)
     {
-        for (U32 j=0; j < console_buffer->width; j++)
+        for (U32 j=0; j < app_state->buffer_view_dims.x; j++)
         {
-            U32 console_buffer_index = i*console_buffer->width + j;
+            U32 console_buffer_index = i*app_state->buffer_view_dims.x + j;
             if (string_index < app_state->string.size)
             {
                 U8 next_letter = app_state->string.data[string_index++];
@@ -711,9 +743,38 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
         }
     }
 
-    if (keyboard.keys[4].is_down)
+    // NOTE: Toolbar rendering
+    // Mode
+    U32 toolbar_row = console_buffer->height - 2;
+    U8 *toolbar_memory = &console_buffer->memory[toolbar_row*console_buffer->width];
+    memory_set(toolbar_memory, '-', console_buffer->width);
+    if (app_state->input_mode == INPUTMODE_INSERT)
     {
-        console_buffer->memory[0] = 'a';
+        memory_copy(toolbar_memory, "INSERT", 6);
+    }
+    else if (app_state->input_mode == INPUTMODE_VISUAL)
+    {
+        memory_copy(toolbar_memory, "VISUAL", 6);
+    }
+    else
+    {
+        Assert(0);
+    }
+
+    // Filename
+    U32 filepath_offset = console_buffer->width - app_state->filepath.size;
+    memory_copy(toolbar_memory+filepath_offset, app_state->filepath.data, app_state->filepath.size);
+
+    // Message
+    U32 message_offset = 10;
+    memory_copy(toolbar_memory+message_offset, app_state->message.data, app_state->message.size);
+
+    // Command bar
+    if (app_state->input_stack_top && app_state->input_stack[0] == ':')
+    {
+        U32 commandbar_row = console_buffer->height - 1;
+        U8 *commandbar_memory = &console_buffer->memory[commandbar_row*console_buffer->width];
+        memory_copy(commandbar_memory, app_state->input_stack, app_state->input_stack_top);
     }
 
     // NOTE: Cursor rendering

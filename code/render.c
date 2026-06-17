@@ -40,13 +40,6 @@ write_pixel_value(U32 *src, U32 *dst)
 function void 
 app_render(ConsoleBuffer console_buffer, VideoMemory video_memory, Font font)
 {
-    // for (U32 ascii_idx=ASCII_START_CHAR; ascii_idx < ASCII_COUNT; ascii_idx++)
-    // {
-    //     U32 *video_pixel = (U32*)video_memory.memory + row*font.height*video_memory.width + col*font.width;
-    //     U8 ascii_char = (U8)console_buffer.memory[row*console_buffer.width + col];
-    //     U32 *font_pixel = font.data + ascii_char*font.width*font.height;
-    // }
-
     // For each letter in the console buffer, copy the char onto the screen
     for (U32 row=0; row < console_buffer.height; row++)
     {
@@ -65,5 +58,18 @@ app_render(ConsoleBuffer console_buffer, VideoMemory video_memory, Font font)
                 video_pixel += video_memory.width;
             }
         }
+    }
+
+    // Draw the cursor (invert the pixels)
+    U32 *video_pixel = (U32*)video_memory.memory + 
+                            console_buffer.cursor.y*font.height*video_memory.width + 
+                            console_buffer.cursor.x*font.width;
+    for (U32 i=0; i < font.height; i++)
+    {
+        for (U32 j=0; j < font.width; j++)
+        {
+            *(video_pixel+j) = ~(*(video_pixel+j));
+        }
+        video_pixel += video_memory.width;
     }
 }

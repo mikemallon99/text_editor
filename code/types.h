@@ -34,8 +34,9 @@ typedef double F64;
 #define Assert(stmt) assert(stmt)
 
 #include <stdlib.h>
-#define memory_zero(src, n) memset((void*)src, 0, n)
-#define memory_copy(dst, src, n) memcpy((void*)dst, (void*)src, n)
+#define memory_zero(src, n) memset((void*)(src), 0, n)
+#define memory_copy(dst, src, n) memcpy((void*)(dst), (void*)(src), n)
+#define memory_set(dst, v, n) memset((void*)(dst), v, n)
 
 #define array_count(a) (sizeof(a)/sizeof((a)[0]))
 

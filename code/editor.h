@@ -101,11 +101,14 @@ typedef struct
 
     Font font;
     Vec2i base_cursor;
+    Vec2i buffer_view_dims;
     InputMode input_mode;
     U32 view_y;
     Keyboard last_keyboard;
     String filepath;
     U32 frames_key_down[KEY_COUNT];
+    String message;
+    U32 message_timer;
 
     // NOTE: Used for combos like "ci)" and "dd"
     U8 input_stack[16];
