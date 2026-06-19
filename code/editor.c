@@ -47,13 +47,6 @@ get_string_cursor(StringArray string_lines, Vec2i base_cursor)
     return result;
 }
 
-typedef struct
-{
-    Token *token;
-    Token *next;
-    Token *prev;
-} TokenIndex;
-
 
 // Virtual cursor
 //  - String Cursor -> String index -> String cursor
@@ -282,6 +275,92 @@ keycode_to_char(U32 keycode, B32 shift_down)
 }
 
 function void
+app_open_file(AppState *app_state, AppMemory *memory, Arena *arena, String filepath)
+{
+    // Read file
+    // TODO: Need to make string memory persistent
+    U8 *str_cpy_data = arena_push_size(arena, filepath.size+1);
+    memory_copy(str_cpy_data, filepath.data, filepath.size);
+    app_state->filepath = (String){str_cpy_data, filepath.size};
+    String file_contents = read_file_to_string(memory->platform_read_file, &app_state->scratch_arena, app_state->filepath);
+    // Convert file to internal string representation (CRLF -> LF)
+    // TODO: remove the existing string
+    app_state->string = string_replace(&app_state->string_arena, file_contents, str_lit("\r\n"), str_lit("\n"));
+}
+
+function U32
+get_token_array_index(TokenArray token_array, U8 *string_cursor)
+{
+    U32 result = 0;
+    B32 found = 0;
+    for (U32 i=0; i < token_array.count; i++)
+    {
+        if (i == token_array.count-1)
+        {
+            result = i;
+            found = 1;
+            break;
+        }
+        else if (string_cursor >= token_array.tokens[i].value.data && 
+                 string_cursor < token_array.tokens[i+1].value.data)
+        {
+            result = i;
+            found = 1;
+            break;
+        }
+    }
+    Assert(found);
+    return result;
+}
+
+function Token*
+get_next_nonwhitespace_token(TokenArray token_array, U8 *cursor)
+{
+    Token *result;
+    U32 index = get_token_array_index(token_array, cursor);
+    index += 1;
+    while (index < token_array.count)
+    {
+        Token *check_token = &(token_array.tokens[index]);
+        if (check_token->type != TOKEN_TYPE_WHITESPACE)
+        {
+            result = check_token;
+            break;
+        }
+        index += 1;
+    }
+    return result;
+}
+
+function Token*
+get_prev_nonwhitespace_token(TokenArray token_array, U8 *cursor)
+{
+    Token *result;
+    U32 index = get_token_array_index(token_array, cursor);
+    // Jump to the start of current token if not already at the start
+    if (token_array.tokens[index].type != TOKEN_TYPE_WHITESPACE &&
+        cursor > token_array.tokens[index].value.data)
+    {
+        result = &(token_array.tokens[index]);
+    }
+    else
+    {
+        index -= 1;
+        while (index >= 0)
+        {
+            Token *check_token = &(token_array.tokens[index]);
+            if (check_token->type != TOKEN_TYPE_WHITESPACE)
+            {
+                result = check_token;
+                break;
+            }
+            index -= 1;
+        }
+    }
+    return result;
+}
+
+function void
 app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
 {
     AppState *app_state = (AppState*)memory->memory;
@@ -299,12 +378,8 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
         U32 string_arena_size = MB(16);
         app_state->string_arena = arena_make(string_arena_base, string_arena_size);
 
-        // Read file
-        app_state->filepath = (String){memory->cli_input_filepath, strlen(memory->cli_input_filepath)};
-        String file_contents = read_file_to_string(memory->platform_read_file, &app_state->scratch_arena, app_state->filepath);
-
-        // Convert file to internal string representation (CRLF -> LF)
-        app_state->string = string_replace(&app_state->string_arena, file_contents, str_lit("\r\n"), str_lit("\n"));
+        String cli_input_filepath = (String){memory->cli_input_filepath, strlen(memory->cli_input_filepath)};
+        app_open_file(app_state, memory, &app_state->perm_arena, cli_input_filepath);
 
         app_state->last_keyboard = keyboard;
         app_state->buffer_view_dims.x = console_buffer->width;
@@ -323,10 +398,12 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
     // - Need visual way to debug input gathering
     // - undo history
     // - e/y scrolling
-    // - change word
-    // - change inside thing
+    // - proper handling of "chords" (ci", cw)
+    // - Lock framerate to 60 (crash if <60 with error report)
+    // - Crashes when line is > 120 chars
+    // - nullptr token crash
+    // - real 'visual mode' with cursor
     // - filesystem stuff
-    //   - :e opens file in current buffer
     //   - relative file opens from current directory
     //   - multiple buffers
     //   - file system explorer
@@ -339,47 +416,6 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
     // NOTE: Tokenize everything for vim motions
     TokenArray token_array = tokenize_string(&app_state->scratch_arena, app_state->string);
     U8 *string_data_ptr = str_cursor_to_addr(string_lines, string_cursor);
-    TokenIndex token_index = {0};
-    for (U32 i=0; i < token_array.count; i++)
-    {
-        Token *token = &token_array.tokens[i];
-        // idx before token?
-        if (string_data_ptr < token->value.data)
-        {
-            token_index.next = token;
-            if (i > 0)
-            {
-                token_index.prev = &token_array.tokens[i-1];
-            }
-            break;
-        }
-
-        // idx in token?
-        if ((string_data_ptr >= token->value.data) &&
-            (string_data_ptr < (token->value.data + token->value.size)))
-        {
-            token_index.token = token;
-            if (i > 0)
-            {
-                token_index.prev = &token_array.tokens[i-1];
-            }
-            if (i+1 < token_array.count)
-            {
-                token_index.next = &token_array.tokens[i+1];
-            }
-            break;
-        }
-    }
-    // If nothing found in loop
-    if (!token_index.token && !token_index.next && !token_index.prev)
-    {
-        // idx after last token?
-        Token *last_token = &token_array.tokens[token_array.count-1];
-        if (string_data_ptr >= (last_token->value.data+last_token->value.size))
-        {
-            token_index.prev = last_token;
-        }
-    }
 
     // TODO: Hold down a key for multiple inputs to register
     for (U32 keycode=0; keycode < KEY_COUNT; keycode++)
@@ -394,24 +430,50 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
         }
 
         if ((keyboard.keys[keycode].is_down && !app_state->last_keyboard.keys[keycode].is_down) ||
-            (app_state->frames_key_down[keycode] > 30 && app_state->frames_key_down[keycode] % 4 == 0))
+            (app_state->frames_key_down[keycode] > 60 && app_state->frames_key_down[keycode] % 4 == 0))
         {
-            if (app_state->input_mode == INPUTMODE_VISUAL && keycode < KEY_RETURN)
+            if (app_state->input_mode == INPUTMODE_NORMAL && keycode < KEY_RETURN)
             {
                 app_state->input_stack[app_state->input_stack_top++] = keycode_to_char(keycode, keyboard.keys[KEY_SHIFT].is_down);
             }
+            if (app_state->input_mode == INPUTMODE_NORMAL && keycode == KEY_BACKSPACE && app_state->input_stack_top)
+            {
+                app_state->input_stack_top -= 1;
+            }
             // Handle running a command
-            else if (app_state->input_mode == INPUTMODE_VISUAL && keycode == KEY_RETURN && 
+            else if (app_state->input_mode == INPUTMODE_NORMAL && keycode == KEY_RETURN && 
                      app_state->input_stack_top && app_state->input_stack[0] == ':')
             {
-                String command = (String){&app_state->input_stack[1], app_state->input_stack_top-1};
-                if (string_compare(command, str_lit("w")))
+                String raw_cmd = (String){&app_state->input_stack[1], app_state->input_stack_top-1};
+                StringArray cmd_split = string_split(&app_state->scratch_arena, raw_cmd, ' ');
+                Assert(cmd_split.count > 0);
+                String cmd = cmd_split.strings[0];
+                StringArray cmd_args = {0};
+                if (cmd_split.count > 1)
+                {
+                    cmd_args.count = cmd_split.count - 1;
+                    cmd_args.strings = &cmd_split.strings[1];
+                }
+                if (string_compare(cmd, str_lit("w")))
                 {
                     // Save file
                     memory->platform_write_file(app_state->filepath.data, app_state->string.data, app_state->string.size);
                     app_state->input_stack_top = 0;
                     app_state->message = str_lit("Saved!");
                     app_state->message_timer = 60;
+                }
+                else if (string_compare(cmd, str_lit("e")))
+                {
+                    if (cmd_args.count == 1)
+                    {
+                        app_open_file(app_state, memory, &app_state->perm_arena, cmd_args.strings[0]);
+                    }
+                    else
+                    {
+                        app_state->message = str_lit("Incorrect args to ':e <file>'");
+                        app_state->message_timer = 60;
+                    }
+                    app_state->input_stack_top = 0;
                 }
                 else
                 {
@@ -468,22 +530,29 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
                 }
                 else if (keycode == KEY_ESC)
                 {
-                    app_state->input_mode = INPUTMODE_VISUAL;
+                    app_state->input_mode = INPUTMODE_NORMAL;
                 }
             }
         }
     }
 
-    if ((app_state->input_mode == INPUTMODE_VISUAL) && app_state->input_stack_top)
+    // TODO: Need better ways to destroy the input stack
+    //       Like some kind of stack terminating chars (numbers)
+    if (keyboard.keys[KEY_ESC].is_down)
     {
-        U8 top_input = app_state->input_stack[app_state->input_stack_top-1];
+        app_state->input_stack_top = 0;
+    }
+
+    if ((app_state->input_mode == INPUTMODE_NORMAL) && app_state->input_stack_top)
+    {
+        String stack_string = (String){app_state->input_stack, app_state->input_stack_top};
         // TODO: Need better system for this
         // Just ignore the input stack if its a command
-        if (app_state->input_stack[0] == ':')
+        if (stack_string.data[0] == ':')
         {
         }
         // Left
-        else if (top_input == 'h')
+        else if (string_compare(stack_string, str_lit("h")))
         {
             // NOTE: Dont go up to previous line if you hit left
             if (string_cursor.x > 0)
@@ -493,7 +562,7 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->input_stack_top = 0;
         }
         // Right
-        else if (top_input == 'l')
+        else if (string_compare(stack_string, str_lit("l")))
         {
             // NOTE: Notice that were calculating off the string XY, not the cursor XY
             String string_line = string_lines.strings[string_cursor.y];
@@ -505,7 +574,7 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->input_stack_top = 0;
         }
         // Up
-        else if (top_input == 'k')
+        else if (string_compare(stack_string, str_lit("k")))
         {
             if (string_cursor.y > 0)
             {
@@ -514,7 +583,7 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->input_stack_top = 0;
         }
         // Down
-        else if (top_input == 'j')
+        else if (string_compare(stack_string, str_lit("j")))
         {
             // Go to the next line at the x value below
             if (string_cursor.y < string_lines.count-1)
@@ -524,7 +593,7 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->input_stack_top = 0;
         }
         // Insert
-        else if (top_input == 'i')
+        else if (string_compare(stack_string, str_lit("i")))
         {
             app_state->input_mode = INPUTMODE_INSERT;
             app_state->input_stack_top = 0;
@@ -532,12 +601,12 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
         ////////////////////////////
         // MOTIONS
         // Start/end of line
-        else if (top_input == '0')
+        else if (string_compare(stack_string, str_lit("0")))
         {
             app_state->base_cursor.x = 0;
             app_state->input_stack_top = 0;
         }
-        else if (top_input == '$')
+        else if (string_compare(stack_string, str_lit("$")))
         {
             // TODO: Sticks to EOL unintentionally (even tho this matches Vim)
             String string_line = string_lines.strings[string_cursor.y];
@@ -545,55 +614,20 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->input_stack_top = 0;
         }
         // Start/end of file
-        else if (app_state->input_stack_top == 2 &&
-                 app_state->input_stack[0] == 'g' &&
-                 app_state->input_stack[1] == 'g')
+        else if (string_compare(stack_string, str_lit("gg")))
         {
             app_state->base_cursor.x = 0;
             app_state->base_cursor.y = 0;
             app_state->input_stack_top = 0;
         }
-        else if (top_input == 'G')
+        else if (string_compare(stack_string, str_lit("G")))
         {
             app_state->base_cursor.x = 0;
             app_state->base_cursor.y = string_lines.count-1;
             app_state->input_stack_top = 0;
         }
-        // Next/prev word
-        else if (top_input == 'w')
-        {
-            // Go to start of next token
-            if (token_index.next)
-            {
-                U8 *token_start_ptr = token_index.next->value.data;
-                app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
-            }
-            app_state->input_stack_top = 0;
-        }
-        else if (top_input == 'b')
-        {
-            // Go to start of current or previous token
-            U8 *string_addr = str_cursor_to_addr(string_lines, string_cursor);
-            U8 *token_start_ptr = 0;
-            // Check if at the start of the current token
-            if (token_index.prev)
-            {
-                if (token_index.token && (string_addr == token_index.token->value.data))
-                {
-                    token_start_ptr = token_index.prev->value.data;
-                }
-                else
-                {
-                    token_start_ptr = token_index.prev->value.data;
-                }
-            }
-            app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
-            app_state->input_stack_top = 0;
-        }
         // Delete line
-        else if (app_state->input_stack_top == 2 &&
-                 app_state->input_stack[0] == 'd' &&
-                 app_state->input_stack[1] == 'd')
+        else if (string_compare(stack_string, str_lit("dd")))
         {
             // BUG: This crashes on the last line
             // TODO: I feel like we could be using memory addresses instead of indices, idk tho
@@ -616,7 +650,7 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->input_stack_top = 0;
         }
         // Delete rest of line
-        else if (top_input == 'D')
+        else if (string_compare(stack_string, str_lit("D")))
         {
             U8 *range_start_addr = str_cursor_to_addr(string_lines, string_cursor);
             // NOTE: Dont delete the new line
@@ -630,7 +664,7 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->input_stack_top = 0;
         }
         // Change rest of line
-        else if (top_input == 'C')
+        else if (string_compare(stack_string, str_lit("C")))
         {
             U8 *range_start_addr = str_cursor_to_addr(string_lines, string_cursor);
             // NOTE: Dont delete the new line
@@ -644,8 +678,106 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             app_state->input_mode = INPUTMODE_INSERT;
             app_state->input_stack_top = 0;
         }
+        // Change word
+        else if (string_compare(stack_string, str_lit("cw")))
+        {
+            // Go to start of next token
+            U8 *cursor_addr = str_cursor_to_addr(string_lines, string_cursor);
+            Token *next_token = get_next_nonwhitespace_token(token_array, cursor_addr);
+            if (next_token)
+            {
+                U8 *range_start_addr = str_cursor_to_addr(string_lines, string_cursor);
+                U8 *range_end_addr = next_token->value.data;
+                U32 range_start = range_start_addr - app_state->string.data;
+                U32 range_end = range_end_addr - app_state->string.data;
+                string_delete_range(&app_state->string_arena, 
+                                    &app_state->string, 
+                                    range_start, 
+                                    range_end);
+            }
+            app_state->input_mode = INPUTMODE_INSERT;
+            app_state->input_stack_top = 0;
+        }
+        else if (string_compare(stack_string, str_lit("ci)")))
+        {
+            // Find the token range
+            U32 token_array_index = get_token_array_index(token_array, string_data_ptr);
+            Token *right;
+            U32 right_index;
+            for (U32 i=token_array_index; i < token_array.count; i++)
+            {
+                if (token_array.tokens[i].type == TOKEN_RPAREN)
+                {
+                    right = &(token_array.tokens[i]);
+                    right_index = i;
+                    break;
+                }
+            }
+            Token *left;
+            if (right)
+            {
+                // TODO: Push/popping
+                U32 rparen_stack = 0;
+                for (S32 i=right_index; i >= 0; i--)
+                {
+                    if (token_array.tokens[i].type == TOKEN_RPAREN)
+                    {
+                        rparen_stack += 1;
+                    }
+                    if (token_array.tokens[i].type == TOKEN_LPAREN)
+                    {
+                        rparen_stack -= 1;
+                        if (rparen_stack == 0)
+                        {
+                            left = &(token_array.tokens[i]);
+                            break;
+                        }
+                    }
+                }
+            }
+            if (left && right)
+            {
+                // Delete the range
+                U8 *range_start_addr = left->value.data + 1;
+                U8 *range_end_addr = right->value.data;
+                U32 range_start = range_start_addr - app_state->string.data;
+                U32 range_end = range_end_addr - app_state->string.data;
+                app_state->base_cursor = str_addr_to_cursor(string_lines, range_start_addr);
+                string_delete_range(&app_state->string_arena, 
+                                    &app_state->string, 
+                                    range_start, 
+                                    range_end);
+                app_state->input_mode = INPUTMODE_INSERT;
+            }
+            app_state->input_stack_top = 0;
+        }
+        // Next/prev word
+        else if (string_compare(stack_string, str_lit("w")))
+        {
+            // Go to start of next token
+            U8 *cursor_addr = str_cursor_to_addr(string_lines, string_cursor);
+            Token *next_token = get_next_nonwhitespace_token(token_array, cursor_addr);
+            if (next_token)
+            {
+                U8 *token_start_ptr = next_token->value.data;
+                app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
+            }
+            app_state->input_stack_top = 0;
+        }
+        else if (string_compare(stack_string, str_lit("b")))
+        {
+            // Go to start of current or previous token
+            U8 *string_addr = str_cursor_to_addr(string_lines, string_cursor);
+            Token *prev_token = get_prev_nonwhitespace_token(token_array, string_addr);
+            if (prev_token)
+            {
+                U8 *token_start_ptr = prev_token->value.data;
+                app_state->base_cursor = str_addr_to_cursor(string_lines, token_start_ptr);
+            }
+            app_state->input_stack_top = 0;
+        }
         // Up/down half a page
-        else if (keyboard.keys[KEY_CTRL].is_down && top_input == 'd')
+        else if (keyboard.keys[KEY_CTRL].is_down && string_compare(stack_string, str_lit("d")))
         {
             U32 half_page = console_buffer->height/2;
             app_state->view_y += half_page;
@@ -660,7 +792,7 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
             }
             app_state->input_stack_top = 0;
         }
-        else if (keyboard.keys[KEY_CTRL].is_down && top_input == 'u')
+        else if (keyboard.keys[KEY_CTRL].is_down && string_compare(stack_string, str_lit("u")))
         {
             U32 half_page = console_buffer->height/2;
             if (app_state->view_y < half_page)
@@ -751,6 +883,10 @@ app_update(AppMemory *memory, Keyboard keyboard, ConsoleBuffer *console_buffer)
     if (app_state->input_mode == INPUTMODE_INSERT)
     {
         memory_copy(toolbar_memory, "INSERT", 6);
+    }
+    else if (app_state->input_mode == INPUTMODE_NORMAL)
+    {
+        memory_copy(toolbar_memory, "NORMAL", 6);
     }
     else if (app_state->input_mode == INPUTMODE_VISUAL)
     {

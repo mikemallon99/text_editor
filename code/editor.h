@@ -83,8 +83,9 @@ typedef struct
 
 typedef enum
 {
-    INPUTMODE_VISUAL,
+    INPUTMODE_NORMAL,
     INPUTMODE_INSERT,
+    INPUTMODE_VISUAL,
 } InputMode;
 
 typedef struct 
@@ -110,8 +111,8 @@ typedef struct
     String message;
     U32 message_timer;
 
-    // NOTE: Used for combos like "ci)" and "dd"
-    U8 input_stack[16];
+    // NOTE: Used for combos like "ci)" and "dd", and commands
+    U8 input_stack[512];
     U32 input_stack_top;
 } AppState;
 

@@ -45,9 +45,17 @@ tokenize_string(Arena *arena, String string)
     U32 cursor = 0;
     while (cursor < string.size)
     {
-        while (is_whitespace(string.data[cursor]))
+        if (is_whitespace(string.data[cursor]))
         {
-            cursor++;
+            U32 marker = cursor;
+            while (is_whitespace(string.data[cursor]))
+            {
+                cursor += 1;
+            }
+            String whitespace_string = {&string.data[marker], cursor-marker};
+            Token whitespace_token = {TOKEN_TYPE_WHITESPACE, whitespace_string};
+            push_struct(arena, Token);
+            result.tokens[result.count++] = whitespace_token;
         }
 
         // TODO: 'comment' token
